@@ -1,0 +1,43 @@
+server:
+  port: 8086
+management: 8082
+demo:
+  service:
+    version: 1.0.0
+nacos:
+  config:
+    server-addr: 127.0.0.1:8848
+spring:
+  application:
+    name: iot-server
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration,org.springframework.boot.autoconfigure.data.web.SpringDataWebAutoConfiguration
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+dubbo:
+  application:
+    id: iot-server
+    name: iot-server
+  protocol:
+    id: dubbo
+    name: dubbo
+  registry:
+    id: iot-server-registry
+    address: nacos://127.0.0.1:8848
+logging:
+  path: /lgmn/shandian/log
+security:
+  oauth2:
+    resource:
+      id: iot-server
+      user-info-uri: http://127.0.0.1:8088/api/member
+      prefer-token-info: false
+lgmn:
+  token-url: http://127.0.0.1:8088/oauth/token
+  exitLogin-url: http://127.0.0.1:8088/api/exDit
+iot:
+  dev1:
+    port: 8000
+    url: 0.0.0.0
+
