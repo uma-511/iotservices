@@ -28,6 +28,9 @@ public class ServerChannelInitializer extends ChannelInitializer<SocketChannel> 
     @Autowired
     LabelFormatService labelFormatService;
 
+    @Autowired
+    UmaDeviceApiService umaDeviceApiService;
+
     @Override
     protected void initChannel(SocketChannel socketChannel) {
         // 解码编码
@@ -35,7 +38,10 @@ public class ServerChannelInitializer extends ChannelInitializer<SocketChannel> 
 //        socketChannel.pipeline().addLast(new StringEncoder(CharsetUtil.UTF_8));
         socketChannel.pipeline().addLast(new SocketDecoder());
         socketChannel.pipeline().addLast(new SocketEncoder());
+//        socketChannel.pipeline().addLast(new StringDecoder(CharsetUtil.UTF_8));
+//        socketChannel.pipeline().addLast(new StringEncoder(CharsetUtil.UTF_8));
 
-        socketChannel.pipeline().addLast(new ServerHandler(viewLabelRecordApiService,viewOrderInfoApiService,userService,labelRecordService,labelFormatService));
+//        socketChannel.pipeline().addLast(new ScanHandler(viewLabelRecordApiService,viewOrderInfoApiService,userService,labelRecordService,labelFormatService));
+        socketChannel.pipeline().addLast(new ServerHandler(viewLabelRecordApiService,viewOrderInfoApiService,userService,labelRecordService,labelFormatService,umaDeviceApiService));
     }
 }

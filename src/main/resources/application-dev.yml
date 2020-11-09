@@ -1,12 +1,12 @@
 server:
-  port: 8086
+  port: 8089
 management: 8082
 demo:
   service:
     version: 1.0.0
 nacos:
   config:
-    server-addr: 127.0.0.1:8848
+    server-addr: 192.168.192.32:8848
 spring:
   application:
     name: iot-server
@@ -24,7 +24,7 @@ dubbo:
     name: dubbo
   registry:
     id: iot-server-registry
-    address: nacos://127.0.0.1:8848
+    address: nacos://192.168.192.32:8848
 logging:
   path: /lgmn/shandian/log
 security:
@@ -38,6 +38,8 @@ lgmn:
   exitLogin-url: http://127.0.0.1:8088/api/exDit
 iot:
   dev1:
-    port: 8000
-    url: 0.0.0.0
+    port: 8001
+    url: 127.0.0.1
+printing:
+  savePath: C:/UMa/LabelRecord/
 

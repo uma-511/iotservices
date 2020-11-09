@@ -16,4 +16,5 @@ public class PrintPojo implements Serializable {
     String jitai;
     String packNum;
     String prodDate;
+    String prodNum;
 }

@@ -1,11 +1,13 @@
 package com.lgmn.iotserver.controller;
 
+import com.alibaba.fastjson.JSONObject;
 import com.lgmn.common.result.Result;
 import com.lgmn.iotserver.command.ControlCommand;
 import com.lgmn.iotserver.command.LoginCommand;
 import com.lgmn.iotserver.command.SwitchScreenCommand;
 import com.lgmn.iotserver.command.UmaCommand;
 import com.lgmn.iotserver.dto.LoginDto;
+import com.lgmn.iotserver.holder.PrintTaskHolder;
 import com.lgmn.iotserver.model.ControlEntity;
 import com.lgmn.iotserver.model.LoginEntity;
 import com.lgmn.iotserver.model.PrintPojo;
@@ -17,27 +19,33 @@ import com.lgmn.iotserver.utils.PrintUtil;
 import com.lgmn.umaservices.basic.dto.LabelFormatDto;
 import com.lgmn.umaservices.basic.dto.ViewLabelRecordDto;
 import com.lgmn.umaservices.basic.dto.ViewOrderInfoDto;
-import com.lgmn.umaservices.basic.entity.LabelFormatEntity;
-import com.lgmn.umaservices.basic.entity.LabelRecordEntity;
-import com.lgmn.umaservices.basic.entity.ViewLabelRecordEntity;
-import com.lgmn.umaservices.basic.entity.ViewOrderInfoEntity;
+import com.lgmn.umaservices.basic.entity.*;
 import com.lgmn.userservices.basic.entity.LgmnUserEntity;
+import com.lgmn.utils.SvgUtils;
+import com.lgmn.utils.printer.PrintProps;
+import com.lgmn.utils.printer.Printer;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.socket.SocketChannel;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.DefaultResponseErrorHandler;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Vector;
 
 @Component
 public class IotController {
@@ -70,7 +78,10 @@ public class IotController {
     @Autowired
     LabelFormatService labelFormatService;
 
-    public IotController(ViewLabelRecordApiService viewLabelRecordService,ViewOrderInfoApiService viewOrderInfoService, UserService userService,LabelRecordService labelRecordService, LabelFormatService labelFormatService){
+    @Autowired
+    UmaDeviceApiService umaDeviceService;
+
+    public IotController(ViewLabelRecordApiService viewLabelRecordService,ViewOrderInfoApiService viewOrderInfoService, UserService userService,LabelRecordService labelRecordService, LabelFormatService labelFormatService, UmaDeviceApiService umaDeviceService){
         umaCommand = new UmaCommand();
         switchScreenCommand = new SwitchScreenCommand();
         loginCommand = new LoginCommand();
@@ -80,6 +91,7 @@ public class IotController {
         this.userService=userService;
         this.labelRecordService=labelRecordService;
         this.labelFormatService=labelFormatService;
+        this.umaDeviceService=umaDeviceService;
     }
 
     /**
@@ -93,10 +105,11 @@ public class IotController {
         logger.info("server receive message :"+clientIP+":"+ msg);
 
         String msgStr = msg.toString().replace("[","").replace("]","").toUpperCase();
-
+        System.out.println(getValue(msgStr));
 //        msgStr = msgStr.substring(1,msgStr.length()-2);
 
         String eventStart="EE B1 11 ";
+        String scanStart="SCAN:";
         String buttonEventEnd=" FF FC FF FF";
         String inputEventEnd=" 00 FF FC FF FF";
 
@@ -135,6 +148,28 @@ public class IotController {
             msgStr=msgStr.substring(0,msgStr.length()-buttonEventEnd.length());
 
             buttonEvent(ctx,msgStr);
+        }else if(StringUtils.startsWith(msgStr,scanStart)){
+            //扫描事件
+            msgStr = msgStr.replaceFirst(scanStart,"");
+            scanEvent(ctx,msgStr);
+        }else{
+            System.out.println(msgStr);
+            System.out.println(getScanValue(msgStr));
+            scanEvent(ctx,getScanValue(msgStr));
+        }
+    }
+
+    private void scanEvent(ChannelHandlerContext ctx, String msgStr) {
+        String ip = getIPAddress(ctx);
+        Channel channel = ChannelMap.get(ip);
+        sendCommand(ctx,loginCommand.setUName(msgStr));
+
+        RestTemplate restTemplate = getRestTemplate();
+        String url="http://127.0.0.1:8089/terminal/setvalue/"+ip+"/0/1/"+msgStr;
+        try {
+            restTemplate.exchange(url, HttpMethod.POST, null, JSONObject.class).getBody();
+        }catch(Exception ex){
+            System.out.println(ex.getMessage());
         }
     }
 
@@ -188,26 +223,28 @@ public class IotController {
                 labelNum = Long.toString(System.currentTimeMillis());
             }
             commands.add(controlCommand.setOrderNo(labelNum));
-            String width = viewOrderInfoEntity.getWidth().toString().replace(".00","");
+            String width = viewOrderInfoEntity.getWidth().replace(".00","");
             commands.add(controlCommand.setWidth(width));
             commands.add(controlCommand.setSpec(viewOrderInfoEntity.getSpecs()));
             commands.add(controlCommand.setModelName(viewOrderInfoEntity.getModelName()));
             commands.add(controlCommand.setQuantity(viewOrderInfoEntity.getPerPackQuantity().toString()));
             commands.add(controlCommand.setFloor(viewOrderInfoEntity.getFloor().toString()));
             commands.add(controlCommand.setColorNum(viewOrderInfoEntity.getColor()));
-            commands.add(controlCommand.setPackNum(viewOrderInfoEntity.getPackNum().toString()));
+            commands.add(controlCommand.setPackNum(Integer.toString(viewOrderInfoEntity.getPackNum())));
             controlEntity.setOrderNo(viewOrderInfoEntity.getOrderNo());
             controlEntity.setCurrPackNum(viewOrderInfoEntity.getPackNum()-1);
             controlEntity.setNextPackNum(viewOrderInfoEntity.getPackNum());
-            BigDecimal metre=viewOrderInfoEntity.getLongs();
-            String ma=viewOrderInfoEntity.getYard();
-            String m="0";
-            if(metre.compareTo(new BigDecimal(m))>0 && StringUtils.isEmpty(ma)){
-                m=metre.toString();
-            }else if(metre.compareTo(new BigDecimal(m))<=0 && StringUtils.isNotEmpty(ma)){
-                m=ma;
-            }
+            controlEntity.setQuantity(Integer.toString(viewOrderInfoEntity.getPerPackQuantity()));
+//            BigDecimal metre=viewOrderInfoEntity.getLongs();
+//            String ma=viewOrderInfoEntity.getYard();
+//            String m="0";
+//            if(metre.compareTo(new BigDecimal(m))>0 && StringUtils.isEmpty(ma)){
+//                m=metre.toString();
+//            }else if(metre.compareTo(new BigDecimal(m))<=0 && StringUtils.isNotEmpty(ma)){
+//                m=ma;
+//            }
 //            commands.add(controlCommand.setMetre(m));
+            controlEntity.setStatus(999);
             commands.add(controlCommand.setWeightTotal(viewOrderInfoEntity.getCumulativeWeight().toString()));
             commands.add(controlCommand.setQuanTotal(viewOrderInfoEntity.getCumulativeQuantity().toString()));
         }
@@ -262,19 +299,19 @@ public class IotController {
 
             commands.add(controlCommand.setOrderNo(viewLabelRecordEntity.getOrderNo()));
             commands.add(controlCommand.setModelName(viewLabelRecordEntity.getModelName()));
-            commands.add(controlCommand.setWidth(viewLabelRecordEntity.getWidth().toString().replace(".00","")));
+            commands.add(controlCommand.setWidth(viewLabelRecordEntity.getWidth()));
             commands.add(controlCommand.setSpec(viewLabelRecordEntity.getSpecs()));
             commands.add(controlCommand.setQuantity(Integer.toString(viewLabelRecordEntity.getQuantity())));
-            commands.add(controlCommand.setFloor(viewLabelRecordEntity.getFloor().toString()));
+            commands.add(controlCommand.setFloor(viewLabelRecordEntity.getFloor()));
             commands.add(controlCommand.setColorNum(viewLabelRecordEntity.getColor()));
-            BigDecimal metre=viewLabelRecordEntity.getLongs();
-            String ma=viewLabelRecordEntity.getYard();
-            String m="0";
-            if(metre.compareTo(new BigDecimal(m))>0 && StringUtils.isEmpty(ma)){
-                m=metre.toString();
-            }else if(metre.compareTo(new BigDecimal(m))<=0 && StringUtils.isNotEmpty(ma)){
-                m=ma;
-            }
+//            BigDecimal metre=viewLabelRecordEntity.getLongs();
+//            String ma=viewLabelRecordEntity.getYard();
+//            String m="0";
+//            if(metre.compareTo(new BigDecimal(m))>0 && StringUtils.isEmpty(ma)){
+//                m=metre.toString();
+//            }else if(metre.compareTo(new BigDecimal(m))<=0 && StringUtils.isNotEmpty(ma)){
+//                m=ma;
+//            }
             int status = viewLabelRecordEntity.getStatus();
             switch (status){
                 case 0:
@@ -413,6 +450,7 @@ public class IotController {
     public void event_login_confirm_finish(ChannelHandlerContext ctx){
         String ip = getIPAddress(ctx);
         LoginEntity loginEntity = LoginMap.get(ip);
+        ControlEntity controlEntity = ControlMap.get(ip);
         /**
          * 完成数据获取后，清空会话事件
          */
@@ -446,6 +484,7 @@ public class IotController {
                     LgmnUserEntity userEntity = (LgmnUserEntity) res.getData();
                     LoginMap.get(ip).setLgmnUserEntity(userEntity);
                     if(res.getCode().equals("200")){
+                        controlEntity.setStatus(999);
                         List<String> cleanCommands=controlCommand.cleanOrderInfo();
                         commands.addAll(cleanCommands);
                         commands.add(controlCommand.setPackNumColor("9F E6"));
@@ -566,19 +605,18 @@ public class IotController {
                 int packNum = Integer.parseInt(controlEntity.getPackNum());
                 int prodId = loginEntity.getViewOrderInfoEntity().getProdId();
                 int modelId = loginEntity.getViewOrderInfoEntity().getModelId();
-                BigDecimal weight = new BigDecimal(controlEntity.getSpecs());
+                String specs=controlEntity.getSpecs();
                 String handler = loginEntity.getLgmnUserEntity().getId();
                 int quantity = Integer.parseInt(controlEntity.getQuantity());
-                LabelRecordEntity labelRecordEntity = labelRecordService.createLabelRecord(packNum, orderid, prodId, modelId, handler, weight, quantity, ip);
+                LabelRecordEntity labelRecordEntity = labelRecordService.createLabelRecord(packNum, orderid, prodId, modelId, handler, specs, quantity, ip);
 
                 ViewLabelRecordDto viewLabelRecordDto = new ViewLabelRecordDto();
                 viewLabelRecordDto.setPackId(packNum);
                 viewLabelRecordDto.setLabelNum(labelRecordEntity.getLabelNum());
                 ViewLabelRecordEntity viewLabelRecordEntity = viewLabelRecordApiService.findByDto(viewLabelRecordDto);
-                if (viewLabelRecordDto != null) {
+                if (viewLabelRecordEntity != null) {
                     loginEntity.setLabelRecordEntity(viewLabelRecordEntity);
-                    printing(loginEntity);
-
+                    printing(loginEntity,ip);
                     int packNo = labelRecordEntity.getPackId() + 1;
                     loginEntity.getViewOrderInfoEntity().setPackNum(packNo);
 
@@ -648,6 +686,9 @@ public class IotController {
                 case 8:
                     tipMsg = "作废失败：标签已作废";
                     break;
+                case 999:
+                    tipMsg = "作废失败：找不到标签";
+                    break;
                 default:
                     tipMsg = "作废失败：未知错误";
                     break;
@@ -660,6 +701,7 @@ public class IotController {
             sendCommand(ctx,controlCommand.clean(UmaCommand.CONTROLLER.TIPMSG));
             sendCommand(ctx,controlCommand.setPackNumColor("9F E6"));
             sendCommand(ctx,controlCommand.setPackNum(Integer.toString(controlEntity.getNextPackNum())));
+            sendCommand(ctx,updateTotalNumCommands(controlEntity,ip));
         }
     }
 
@@ -710,6 +752,9 @@ public class IotController {
                 case 8:
                     tipMsg = "补打失败：标签已作废";
                     break;
+                case 999:
+                    tipMsg = "补打失败：找不到标签";
+                    break;
                 default:
                     tipMsg = "补打失败：未知错误";
                     break;
@@ -718,7 +763,7 @@ public class IotController {
             sendCommand(ctx,controlCommand.setTipMsg(tipMsg));
             return;
         } else {
-            printing(loginEntity);
+            printing(loginEntity,ip);
             List<String> commands=new ArrayList<>();
             //补打后恢复流水号
             commands.add(controlCommand.clean(UmaCommand.CONTROLLER.TIPMSG));
@@ -730,7 +775,7 @@ public class IotController {
 
     }
 
-    private void printing(LoginEntity loginEntity) {
+    private void printing(LoginEntity loginEntity, String ip) {
         ViewOrderInfoEntity viewOrderInfoEntity = loginEntity.getViewOrderInfoEntity();
         ViewLabelRecordEntity labelRecordEntity = loginEntity.getLabelRecordEntity();
 
@@ -747,22 +792,53 @@ public class IotController {
         printPojo.setJitai(jitai);
         printPojo.setPerPackQuantity(Integer.toString(labelRecordEntity.getQuantity()));
         printPojo.setSpecs(viewOrderInfoEntity.getSpecs());
-        printPojo.setWidth(viewOrderInfoEntity.getWidth().toString().replace(".00",""));
+        printPojo.setWidth(viewOrderInfoEntity.getWidth());
         printPojo.setProdDate(sdf.format(labelRecordEntity.getProdTime()));
         printPojo.setProdUser(loginEntity.getUsername());
         printPojo.setModelName(labelRecordEntity.getModelName());
+        printPojo.setProdNum(viewOrderInfoEntity.getProductName());
 
-//        String tpath="C:/Users/Lonel/Desktop/test.xlsx";
-        String path=ExcelUtils.exportLabelExcel(labelFormatEntity.getPath(),printPojo);
-//        String path=ExcelUtils.exportLabelExcel(tpath,printPojo);
-        try {
-            PrintUtil.print(path);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+//        String path=ExcelUtils.exportLabelExcel(labelFormatEntity.getPath(),printPojo);
+//        try {
+//            String printerName = getPrinterName(ip);
+//            PrintUtil.print(path,printerName);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+        String printerIp=getPrinterIp(ip);
+        print(printerIp,labelFormatEntity.getPath(),printPojo);
+    }
+
+    public void print(String ip,String svgPath,PrintPojo printPojo){
+        Printer printer = PrinterMap.get(ip);
+        Map<String,String> dataMap = null;
+//        try {
+
+            dataMap = ExcelUtils.objectToMap3(printPojo);
+//            Vector<Byte> data = SvgUtils.getPrintData(svgPath, printer.getPrintProps(), dataMap);
+            printer.setSvgPath(svgPath);
+            printer.setDataMap(dataMap);
+            PrintTaskHolder.getInstance().addData(printer);
+//        } catch (IllegalAccessException e) {
+//            System.out.println(e.getMessage());
+//            e.printStackTrace();
+//        }finally {
+//            printer.close(ip);
+//        }
+    }
+
+    private String getPrinterName(String ip){
+        UmaDeviceEntity deviceEntity = umaDeviceService.getPrinterByTerminal(ip);
+        return deviceEntity.getName();
+    }
+
+    private String getPrinterIp(String ip){
+        UmaDeviceEntity deviceEntity = umaDeviceService.getPrinterByTerminal(ip);
+        return deviceEntity.getIp();
     }
 
     private List<String> updateTotalNumCommands(ControlEntity controlEntity,String ip){
+        logger.info("updateTotalNumCommands");
         List<String> commands=new ArrayList<>();
         ViewOrderInfoEntity viewOrderInfoEntity = getOrderInfoByOrderNo(controlEntity.getOrderNo(),ip);
         commands.add(controlCommand.setQuanTotal(viewOrderInfoEntity.getCumulativeQuantity()));
@@ -797,6 +873,10 @@ public class IotController {
      */
     public void sendCommand(ChannelHandlerContext ctx,String command){
         ctx.channel().writeAndFlush(command);
+    }
+
+    public  void sendCommand(Channel channel,String command){
+        channel.writeAndFlush(command);
     }
 
     public void sendCommand(ChannelHandlerContext ctx,List<String> commands){
@@ -852,6 +932,20 @@ public class IotController {
     }
 
     /**
+     * 获取扫描抢内容
+     * @param msgStr
+     * @return
+     */
+    private String getScanValue(String msgStr){
+        if(msgStr.length()<16){
+            return "";
+        }
+        logger.info(Integer.toString(msgStr.length()));
+        String value= CoderUtils.decoder(msgStr.replaceAll(" ",""));
+        return value;
+    }
+
+    /**
      * 保存会话连接
      * @param ctx
      * @return
@@ -862,6 +956,7 @@ public class IotController {
         saveLogin(clientIP);
         saveControl(clientIP);
         saveEvent(clientIP);
+        savePrinter(clientIP);
 
         SocketChannel currentChannel = (SocketChannel)ctx.channel();
 
@@ -884,6 +979,23 @@ public class IotController {
     public void saveLogin(String clientIP) {
         if(LoginMap.get(clientIP)==null){
             LoginMap.add(clientIP, new LoginEntity());
+        }
+    }
+
+    /**
+     * 保存打印机
+     * @param ip
+     */
+    public void savePrinter(String ip) {
+        String printerIp=getPrinterIp(ip);
+        if(PrinterMap.get(printerIp)==null){
+            int port = 9100;
+            PrintProps printProps = new PrintProps();
+            printProps.setWidth(100);
+            printProps.setHeight(150);
+            Printer printer = new Printer(printerIp, port, printProps);
+//            System.out.println(printer);
+            PrinterMap.add(printerIp, printer);
         }
     }
 
@@ -916,5 +1028,19 @@ public class IotController {
         InetSocketAddress insocket = (InetSocketAddress) ctx.channel()
                 .remoteAddress();
         return insocket.getAddress().getHostAddress();
+    }
+
+    public RestTemplate getRestTemplate () {
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.setErrorHandler(new DefaultResponseErrorHandler() {
+            @Override
+            // Ignore 400
+            public void handleError(ClientHttpResponse response) throws IOException {
+                if (response.getRawStatusCode() != 400 && response.getRawStatusCode() != 401 && response.getRawStatusCode() != 402 && response.getRawStatusCode() != 403 && response.getRawStatusCode() != 405 && response.getRawStatusCode() != 500) {
+                    super.handleError(response);
+                }
+            }
+        });
+        return restTemplate;
     }
 }

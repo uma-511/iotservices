@@ -10,22 +10,29 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-public class ServerHandler extends SimpleChannelInboundHandler<Object> {
-    private static final Logger logger = LoggerFactory.getLogger(ServerHandler.class.getName());
+public class ScanHandler extends SimpleChannelInboundHandler<Object> {
+    private static final Logger logger = LoggerFactory.getLogger(ScanHandler.class.getName());
 
     @Autowired
     IotController iotController;
 
-    public ServerHandler(ViewLabelRecordApiService viewLabelRecordService, ViewOrderInfoApiService viewOrderInfoApiService, UserService userService, LabelRecordService labelRecordService, LabelFormatService labelFormatService,UmaDeviceApiService umaDeviceApiService){
+    public ScanHandler(ViewLabelRecordApiService viewLabelRecordService, ViewOrderInfoApiService viewOrderInfoApiService, UserService userService, LabelRecordService labelRecordService, LabelFormatService labelFormatService,UmaDeviceApiService umaDeviceApiService){
         iotController=new IotController(viewLabelRecordService,viewOrderInfoApiService,userService,labelRecordService,labelFormatService,umaDeviceApiService);
     }
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, Object msg) {
-//        InetSocketAddress insocket = (InetSocketAddress) ctx.channel().remoteAddress();
-//        int port = insocket.getPort();
-//        System.out.println("端口："+port);
-        iotController.handler(ctx,msg);
+        if(msg instanceof String) {
+            System.out.println("----------XXX-----"+(String) msg);
+//            ctx.writeAndFlush("我是XXX服务端");
+            String msgStr = (String)msg;
+            msgStr="SCAN:"+msgStr;
+            iotController.handler(ctx,msgStr);
+        }else {
+            ctx.fireChannelRead(msg);
+        }
+
+//        iotController.handler(ctx,msg);
     }
 
     @Override
@@ -37,7 +44,7 @@ public class ServerHandler extends SimpleChannelInboundHandler<Object> {
     /**
      * channelInactive: 客户端断开连接后触发
      *
-     * @see io.netty.channel.ChannelInboundHandlerAdapter#channelInactive(io.netty.channel.ChannelHandlerContext)
+     * @see io.netty.channel.ChannelInboundHandlerAdapter#channelInactive(ChannelHandlerContext)
      */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {

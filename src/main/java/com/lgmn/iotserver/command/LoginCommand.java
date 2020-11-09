@@ -1,5 +1,7 @@
 package com.lgmn.iotserver.command;
 
+import com.lgmn.iotserver.utils.CoderUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -57,7 +59,7 @@ public class LoginCommand {
     }
 
     public String setLoginValue(UmaCommand.LOGIN login, String value){
-        return UmaCommand.FUNCTION.SET_VALUE.getValue() + " " + UmaCommand.SCREEN.LOGIN.getCommand() + " " + login.getCommand() + value + " " + command.ending;
+        return UmaCommand.FUNCTION.SET_VALUE.getValue() + " " + UmaCommand.SCREEN.LOGIN.getCommand() + " " + login.getCommand() + " " + CoderUtils.stringToHexStr(value) + command.ending;
     }
 
     public String getLoginValue(UmaCommand.LOGIN login){
@@ -79,7 +81,9 @@ public class LoginCommand {
     public List<String> getAllValue(){
         List<String> commands = new ArrayList<>();
         for(UmaCommand.LOGIN e : EnumSet.allOf(UmaCommand.LOGIN.class)){
-            commands.add( getLoginValue(e));
+            if(!(StringUtils.startsWith(e.getFieldName(),"event_"))) {
+                commands.add(getLoginValue(e));
+            }
         }
         return commands;
     }

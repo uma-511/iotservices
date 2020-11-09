@@ -4,24 +4,22 @@ import com.jacob.activeX.ActiveXComponent;
 import com.jacob.com.ComThread;
 import com.jacob.com.Dispatch;
 import com.jacob.com.Variant;
-//import org.apache.pdfbox.pdmodel.PDDocument;
-//import org.apache.pdfbox.rendering.PDFRenderer;
+import com.lgmn.iotserver.controller.IotController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.imageio.ImageIO;
 import javax.print.*;
 import javax.print.attribute.DocAttributeSet;
 import javax.print.attribute.HashDocAttributeSet;
 import javax.print.attribute.HashPrintRequestAttributeSet;
 import javax.print.attribute.standard.OrientationRequested;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
 public class PrintUtil {
-
+    private static final Logger logger = LoggerFactory.getLogger(PrintUtil.class.getName());
     /**
      * 竖屏模式
      */
@@ -268,17 +266,21 @@ public class PrintUtil {
 
         ActiveXComponent xl=new ActiveXComponent("Excel.Application");
         try {
+            logger.info("before print");
             Dispatch.put(xl, "Visible", new Variant(true));
             Dispatch workbooks = xl.getProperty("Workbooks").toDispatch();
             Dispatch excel=Dispatch.call(workbooks, "Open", filePath).toDispatch();
             Dispatch.callN(excel,"PrintOut",new Object[]{Variant.VT_MISSING, Variant.VT_MISSING, new Integer(1),
                     new Boolean(false), deviceName, new Boolean(true),Variant.VT_MISSING, ""});
             Dispatch.call(excel, "Close", new Variant(false));
+            logger.info("finish print");
         } catch (Exception e) {
             e.printStackTrace();
         } finally{
-            xl.invoke("Quit",new Variant[0]);
+            logger.info("before Quit");
+            xl.invoke("Quit",new Variant[]{});
             ComThread.Release();
+            logger.info("finish Quit");
         }
     }
 

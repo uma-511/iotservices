@@ -12,7 +12,7 @@ import java.util.List;
 @Component
 public class ViewLabelRecordApiService extends LgmnAbstractApiService<ViewLabelRecordEntity, ViewLabelRecordDto, Integer, ViewLabelRecordService> {
 
-    @Reference(version = "${demo.service.version}")
+    @Reference(version = "${demo.service.version}", timeout = 20000)
     ViewLabelRecordService viewLabelRecordService;
 
     @Override

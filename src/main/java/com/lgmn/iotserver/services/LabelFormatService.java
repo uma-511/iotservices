@@ -15,7 +15,7 @@ import java.util.List;
 @Component
 public class LabelFormatService extends LgmnAbstractApiService<LabelFormatEntity, LabelFormatDto, Integer, com.lgmn.umaservices.basic.service.LabelFormatService> {
 
-    @Reference(version = "${demo.service.version}")
+    @Reference(version = "${demo.service.version}", timeout = 20000)
     com.lgmn.umaservices.basic.service.LabelFormatService labelFormatService;
 
     @Override

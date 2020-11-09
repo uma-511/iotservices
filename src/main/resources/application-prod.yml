@@ -1,5 +1,5 @@
 server:
-  port: 8086
+  port: 8089
 management: 8082
 demo:
   service:
@@ -47,3 +47,9 @@ qiniu:
     url: http://qncdn.gdsdec.com/
 recommend:
   url: http://www.gdsdec.com/
+iot:
+  dev1:
+    port: 8000
+    url: 0.0.0.0
+printing:
+  savePath: H:/UMa/LabelRecord/
